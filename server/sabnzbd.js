@@ -15,7 +15,7 @@ async function addUrl(nzbUrl, nzbTitle) {
     output: 'json',
     apikey: apiKey,
     name: nzbUrl,
-    cat: 'ebooks',
+    cat: 'books',
     nzbname: nzbTitle || '',
   })
 

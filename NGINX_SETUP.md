@@ -83,8 +83,8 @@ Before going public, verify all of these:
 - [ ] **Changed default password** — go to Settings → Security and change from `shrumslibrary`
 - [ ] **SSL enabled** — HTTPS enforced via NPM
 - [ ] **Kindle approved sender** — the `smtp_from` address in Settings → Kindle must be added to your Kindle's approved document senders list at amazon.com/myk
-- [ ] **SABnzbd `ebooks` category** — create a category in SABnzbd named `ebooks` pointing to the folder that is mapped as the `sabnzbd_complete` volume
-- [ ] **`sabnzbd_complete` volume** — the Docker named volume `sabnzbd_complete` must point to SABnzbd's completed ebooks folder on TrueNAS
+- [ ] **SABnzbd `books` category** — the `books` category in SABnzbd must point to the folder mapped as the `sabnzbd_complete` volume
+- [ ] **`sabnzbd_complete` volume** — the Docker named volume `sabnzbd_complete` must point to SABnzbd's completed books folder on TrueNAS
 - [ ] **`/library` volume** — map `shrumslibrary_library` to a TrueNAS dataset you want to use as your clean epub library
 
 ---
@@ -97,6 +97,6 @@ In TrueNAS SCALE, when deploying via custom app (Docker Compose), the volumes ma
 |---|---|
 | `shrumslibrary_data` | A TrueNAS dataset for the SQLite database (e.g. `tank/shrumslibrary/data`) |
 | `shrumslibrary_library` | A TrueNAS dataset for your epub library (e.g. `tank/ebooks/library`) |
-| `sabnzbd_complete` | SABnzbd's completed downloads folder for the `ebooks` category (external volume — must already exist) |
+| `sabnzbd_complete` | SABnzbd's completed downloads folder for the `books` category (external volume — must already exist) |
 
 The `sabnzbd_complete` volume is marked `external: true` in docker-compose.yml, meaning it must be created by your SABnzbd deployment — ShrumsLibrary will not create it.

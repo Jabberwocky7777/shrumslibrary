@@ -72,7 +72,7 @@ docker compose up -d --build
 | `shrumslibrary_library` | `/library` | read-write | Clean epub library (auto-created) |
 | `shrumslibrary_data` | `/data` | read-write | SQLite database (auto-created) |
 
-> **SABnzbd setup**: create a category named `ebooks` in SABnzbd pointing to the folder exposed as the `sabnzbd_complete` volume. ShrumsLibrary looks for downloaded epubs there.
+> **SABnzbd setup**: the `books` category in SABnzbd must point to the folder exposed as the `sabnzbd_complete` volume. ShrumsLibrary submits all downloads to this category.
 
 ---
 
