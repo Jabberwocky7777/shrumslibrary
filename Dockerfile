@@ -10,7 +10,8 @@ RUN cd client && npm run build
 FROM node:20-alpine AS runner
 
 # Build tools needed for better-sqlite3 native compilation on musl/Alpine
-RUN apk add --no-cache python3 make g++
+# py3-setuptools provides distutils, removed from Python 3.12 stdlib but required by node-gyp
+RUN apk add --no-cache python3 make g++ py3-setuptools
 
 RUN addgroup -g 1001 shrums && adduser -u 1001 -G shrums -s /bin/sh -D shrums
 
