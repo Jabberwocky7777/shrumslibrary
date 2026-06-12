@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  shrumslibrary:
+    build: .
+    container_name: shrumslibrary
+    restart: unless-stopped
+    ports:
+      - "3737:3737"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - shrumslibrary_data:/data
+      - shrumslibrary_library:/library
+      - sabnzbd_complete:/downloads:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3737/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  shrumslibrary_data:
+  shrumslibrary_library:
+  sabnzbd_complete:
+    external: true
