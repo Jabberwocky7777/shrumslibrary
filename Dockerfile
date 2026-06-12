@@ -13,7 +13,7 @@ FROM node:20-alpine AS runner
 # py3-setuptools provides distutils, removed from Python 3.12 stdlib but required by node-gyp
 RUN apk add --no-cache python3 make g++ py3-setuptools
 
-RUN addgroup -g 1001 shrums && adduser -u 1001 -G shrums -s /bin/sh -D shrums
+RUN addgroup -g 568 shrums && adduser -u 568 -G shrums -s /bin/sh -D shrums
 
 WORKDIR /app
 
