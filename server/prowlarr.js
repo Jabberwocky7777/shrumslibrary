@@ -60,13 +60,17 @@ async function searchProwlarr(query, author) {
   const params = new URLSearchParams({
     apikey: apiKey,
     query: searchQuery,
-    categories: '7020,7030',
     type: 'search',
   })
+  // Prowlarr expects repeated params, not comma-separated
+  params.append('categories', '7000')
+  params.append('categories', '7020')
+  params.append('categories', '7030')
 
   const response = await fetch(`${url.replace(/\/$/, '')}/api/v1/search?${params}`)
   if (!response.ok) {
-    throw new Error(`Prowlarr returned ${response.status}: ${response.statusText}`)
+    const body = await response.text().catch(() => '')
+    throw new Error(`Prowlarr returned ${response.status}: ${body || response.statusText}`)
   }
 
   const results = await response.json()
