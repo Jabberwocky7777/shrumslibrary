@@ -46,8 +46,10 @@ async function processCompletedJob(slot) {
   db.prepare(`UPDATE releases SET status = 'validating' WHERE id = ?`).run(release.id)
   db.prepare(`UPDATE books SET status = 'validating', updated_at = datetime('now') WHERE id = ?`).run(release.book_id)
 
-  // Find the downloaded file — SABnzbd stores it under the job's storage path
-  const epubPath = findEpubInDir(slot.storage || path.join(DOWNLOADS_ROOT, slot.filename || ''))
+  // slot.storage is SABnzbd's absolute path on its own filesystem — not ours.
+  // We mount the category's complete folder at DOWNLOADS_ROOT, so map to the
+  // basename only (the job's folder name relative to our mount point).
+  const epubPath = findEpubInDir(resolveDownloadPath(slot))
 
   if (!epubPath) {
     await failRelease(release, 'Downloaded file not found in expected location')
@@ -170,22 +172,41 @@ async function tryNextRelease(bookId) {
   }
 }
 
-function findEpubInDir(dir) {
+// Map SABnzbd's storage path to our container mount. slot.storage is the
+// absolute path on SABnzbd's filesystem; we only care about the basename
+// (the job folder name) relative to DOWNLOADS_ROOT.
+function resolveDownloadPath(slot) {
+  const candidates = []
+  if (slot.storage) candidates.push(path.join(DOWNLOADS_ROOT, path.basename(slot.storage)))
+  if (slot.name)    candidates.push(path.join(DOWNLOADS_ROOT, slot.name))
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c
+  }
+  // Last resort: scan root directly (epub in top-level of downloads)
+  return DOWNLOADS_ROOT
+}
+
+// Recursively search for an epub up to maxDepth levels deep
+function findEpubInDir(dir, depth = 0) {
   if (!dir || !fs.existsSync(dir)) return null
 
-  // If dir is actually a file
-  if (fs.statSync(dir).isFile()) {
-    return dir.endsWith('.epub') ? dir : null
-  }
+  const stat = fs.statSync(dir)
+  if (stat.isFile()) return dir.toLowerCase().endsWith('.epub') ? dir : null
+  if (!stat.isDirectory()) return null
 
   try {
-    for (const entry of fs.readdirSync(dir)) {
-      const full = path.join(dir, entry)
-      if (entry.endsWith('.epub')) return full
-      // Check one level deep
-      if (fs.statSync(full).isDirectory()) {
-        for (const sub of fs.readdirSync(full)) {
-          if (sub.endsWith('.epub')) return path.join(full, sub)
+    const entries = fs.readdirSync(dir)
+    // Files first — prefer finding epub without recursing
+    for (const entry of entries) {
+      if (entry.toLowerCase().endsWith('.epub')) return path.join(dir, entry)
+    }
+    // Then recurse into subdirectories (up to 4 levels)
+    if (depth < 4) {
+      for (const entry of entries) {
+        const full = path.join(dir, entry)
+        if (fs.statSync(full).isDirectory()) {
+          const found = findEpubInDir(full, depth + 1)
+          if (found) return found
         }
       }
     }

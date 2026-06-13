@@ -6,10 +6,25 @@ function statusLabel(status) {
   return status.replace(/_/g, ' ')
 }
 
-function QueueCard({ book, onSearchAgain }) {
+function QueueCard({ book, onSearchAgain, onDelete }) {
   const [expanded, setExpanded] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const isAttention = book.status === 'needs_attention'
   const isActive = ['downloading', 'validating'].includes(book.status)
+
+  async function handleDelete(e) {
+    e.stopPropagation()
+    if (!window.confirm(`Remove "${book.title}" from the queue?`)) return
+    setDeleting(true)
+    try {
+      await axios.delete(`/api/books/${book.id}`)
+      onDelete(book.id)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <div style={{
@@ -42,7 +57,7 @@ function QueueCard({ book, onSearchAgain }) {
           {book.author && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{book.author}</div>}
         </div>
 
-        {/* Status + attempt */}
+        {/* Status + attempt + delete */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <span className={`status-pill ${book.status}`}>{statusLabel(book.status)}</span>
           {book.releases?.length > 0 && (
@@ -52,6 +67,15 @@ function QueueCard({ book, onSearchAgain }) {
             </span>
           )}
           <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{expanded ? '▲' : '▼'}</span>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={handleDelete}
+            disabled={deleting}
+            title="Remove from queue"
+            style={{ color: 'var(--error)', borderColor: 'transparent', padding: '2px 8px' }}
+          >
+            {deleting ? <span className="spinner" /> : '✕'}
+          </button>
         </div>
       </div>
 
@@ -108,6 +132,10 @@ export default function Queue() {
     window.location.href = `/search?q=${encodeURIComponent(book.title)}&author=${encodeURIComponent(book.author || '')}`
   }
 
+  function handleDelete(bookId) {
+    setBooks(prev => prev.filter(b => b.id !== bookId))
+  }
+
   if (loading) return <div className="empty-state"><span className="spinner" /></div>
 
   return (
@@ -117,7 +145,7 @@ export default function Queue() {
         <div className="empty-state">No active downloads. Search for a book to get started.</div>
       ) : (
         books.map(book => (
-          <QueueCard key={book.id} book={book} onSearchAgain={handleSearchAgain} />
+          <QueueCard key={book.id} book={book} onSearchAgain={handleSearchAgain} onDelete={handleDelete} />
         ))
       )}
     </div>

@@ -2,6 +2,7 @@ const router = require('express').Router()
 const db = require('../db')
 const { sendToKindle } = require('../mailer')
 const { sanitiseEpubEncoding } = require('../sanitiser')
+const { deleteJob } = require('../sabnzbd')
 
 router.get('/', (req, res) => {
   const books = db.prepare(`SELECT * FROM books ORDER BY updated_at DESC`).all()
@@ -52,6 +53,29 @@ router.post('/:id/send/:kindleId', (req, res) => {
 
   sendToKindle(book, kindle)
   res.json({ ok: true, kindleAddress: kindle.email })
+})
+
+router.delete('/:id', async (req, res) => {
+  const book = db.prepare('SELECT * FROM books WHERE id = ?').get(req.params.id)
+  if (!book) return res.status(404).json({ error: 'Book not found' })
+
+  // Cancel any active SABnzbd job
+  const active = db.prepare(`
+    SELECT sabnzbd_job_id FROM releases
+    WHERE book_id = ? AND status = 'downloading' AND sabnzbd_job_id IS NOT NULL
+  `).get(book.id)
+  if (active) await deleteJob(active.sabnzbd_job_id).catch(() => {})
+
+  // Delete child records then the book
+  const releaseIds = db.prepare('SELECT id FROM releases WHERE book_id = ?').all(book.id).map(r => r.id)
+  if (releaseIds.length > 0) {
+    const ph = releaseIds.map(() => '?').join(',')
+    db.prepare(`DELETE FROM validation_results WHERE release_id IN (${ph})`).run(...releaseIds)
+  }
+  db.prepare('DELETE FROM releases WHERE book_id = ?').run(book.id)
+  db.prepare('DELETE FROM books WHERE id = ?').run(book.id)
+
+  res.json({ ok: true })
 })
 
 router.post('/:id/fix-encoding', (req, res) => {

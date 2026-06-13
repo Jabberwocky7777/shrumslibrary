@@ -33,6 +33,7 @@ export default function Search() {
   const [author, setAuthor]     = useState('')
   const [results, setResults]   = useState([])
   const [searching, setSearching] = useState(false)
+  const [searchController, setSearchController] = useState(null)
   const [adding, setAdding]     = useState(false)
   const [forcingIdx, setForcingIdx] = useState(null)
   const [error, setError]       = useState('')
@@ -44,18 +45,36 @@ export default function Search() {
     setError('')
   }
 
+  function handleCancelSearch() {
+    if (searchController) {
+      searchController.abort()
+      setSearchController(null)
+      setSearching(false)
+    }
+  }
+
   async function handleSearch(e) {
     e.preventDefault()
     if (!query.trim()) return
+    const controller = new AbortController()
+    setSearchController(controller)
     setSearching(true)
     setError('')
     setAdded(null)
     try {
-      const { data } = await axios.get('/api/search', { params: { q: query, author } })
+      const { data } = await axios.get('/api/search', {
+        params: { q: query, author },
+        signal: controller.signal,
+      })
       setResults(data)
     } catch (err) {
-      setError(err.response?.data?.error || 'Search failed')
+      if (axios.isCancel(err) || err.name === 'CanceledError') {
+        // user cancelled — no error message
+      } else {
+        setError(err.response?.data?.error || 'Search failed')
+      }
     } finally {
+      setSearchController(null)
       setSearching(false)
     }
   }
@@ -131,11 +150,11 @@ export default function Search() {
         <button
           type="button"
           className="btn btn-ghost"
-          onClick={handleSearch}
-          disabled={busy || !query.trim()}
+          onClick={searching ? handleCancelSearch : handleSearch}
+          disabled={!searching && (busy || !query.trim())}
           style={{ flexShrink: 0 }}
         >
-          {searching ? <span className="spinner" /> : 'Search'}
+          {searching ? 'Cancel' : 'Search'}
         </button>
         <button
           type="button"
