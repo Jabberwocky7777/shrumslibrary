@@ -46,6 +46,16 @@ function extractGroup(title) {
   return ''
 }
 
+function detectFormat(title) {
+  const t = (title || '').toUpperCase()
+  if (t.includes('EPUB')) return 'EPUB'
+  if (t.includes('MOBI')) return 'MOBI'
+  if (t.includes('AZW')) return 'AZW'
+  if (t.includes('FB2')) return 'FB2'
+  if (t.includes('PDF')) return 'PDF'
+  return null
+}
+
 // ── Prowlarr client ────────────────────────────────────────────────────────────
 
 async function searchProwlarr(query, author) {
@@ -83,6 +93,8 @@ async function searchProwlarr(query, author) {
       score: scoreRelease(r),
       nzb_url: r.downloadUrl || r.link,
       indexer: r.indexer,
+      age_days: typeof r.age === 'number' ? r.age : null,
+      format: detectFormat(r.title),
     }))
     .sort((a, b) => b.score - a.score)
 }

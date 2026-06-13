@@ -1,17 +1,6 @@
-/* CSS custom properties injected server-side — these are fallbacks only */
+/* Theme colour variables are injected by the server into <head> before this
+   stylesheet loads. Only define non-theme constants here. */
 :root {
-  --bg: #09090b;
-  --bg-deep: #06060a;
-  --bg-raised: #0c0c10;
-  --border: #1e1e26;
-  --accent: #818cf8;
-  --success: #4ade80;
-  --warn: #fb923c;
-  --error: #f87171;
-  --text: #e4e4e7;
-  --text-muted: #52525b;
-  --text-dim: #27272a;
-
   --radius: 2px;
   --sidebar-width: 220px;
   --font-mono: 'JetBrains Mono', 'Fira Mono', 'Consolas', monospace;
