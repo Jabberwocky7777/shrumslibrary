@@ -63,6 +63,7 @@ function serveWithTheme(req, res) {
 // ── Security middleware ───────────────────────────────────────────────────────
 
 app.use(helmet({
+  hsts: false, // TLS is terminated at the reverse proxy, not here
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
