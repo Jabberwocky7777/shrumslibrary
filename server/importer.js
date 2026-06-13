@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const AdmZip = require('adm-zip')
 const db = require('./db')
 
 const LIBRARY_ROOT = process.env.LIBRARY_PATH || '/library'
@@ -7,6 +8,28 @@ const ILLEGAL_CHARS = /[/\\:*?"<>|]/g
 
 function sanitiseName(name) {
   return (name || 'Unknown').replace(ILLEGAL_CHARS, '').trim()
+}
+
+// Read title/author/year from epub OPF metadata as a fallback for missing DB fields
+function readEpubMeta(epubPath) {
+  try {
+    const zip = new AdmZip(epubPath)
+    const container = zip.getEntry('META-INF/container.xml')
+    if (!container) return {}
+    const containerXml = container.getData().toString('utf8')
+    const opfMatch = containerXml.match(/full-path="([^"]+\.opf)"/i)
+    if (!opfMatch) return {}
+    const opfEntry = zip.getEntry(opfMatch[1])
+    if (!opfEntry) return {}
+    const opf = opfEntry.getData().toString('utf8')
+    return {
+      title:  opf.match(/<dc:title[^>]*>([^<]+)<\/dc:title>/i)?.[1]?.trim()  || null,
+      author: opf.match(/<dc:creator[^>]*>([^<]+)<\/dc:creator>/i)?.[1]?.trim() || null,
+      year:   opf.match(/<dc:date[^>]*>(\d{4})/i)?.[1] || null,
+    }
+  } catch {
+    return {}
+  }
 }
 
 function buildDestPath(book) {
@@ -36,11 +59,24 @@ function resolveCollision(destPath) {
 }
 
 async function importBook(sourcePath, book) {
-  const destPath = resolveCollision(buildDestPath(book))
+  // Fill in missing title/author from the epub's own OPF metadata
+  const epubMeta = readEpubMeta(sourcePath)
+  const mergedBook = {
+    ...book,
+    title:  book.title  || epubMeta.title  || 'Unknown Title',
+    author: book.author || epubMeta.author || 'Unknown Author',
+    year:   book.year   || epubMeta.year   || null,
+  }
+
+  const destPath = resolveCollision(buildDestPath(mergedBook))
   const destDir = path.dirname(destPath)
 
   fs.mkdirSync(destDir, { recursive: true })
-  fs.copyFileSync(sourcePath, destPath)
+
+  // Use read+write instead of copyFileSync — copyFileSync uses copy_file_range
+  // which fails with EPERM across different ZFS datasets on TrueNAS.
+  const content = fs.readFileSync(sourcePath)
+  fs.writeFileSync(destPath, content)
 
   // Verify copy integrity by comparing sizes
   const srcStat = fs.statSync(sourcePath)

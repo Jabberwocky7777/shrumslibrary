@@ -1,169 +1,186 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
-import ScoreBadge from '../components/ScoreBadge'
 
-function formatAge(days) {
-  if (days == null) return '—'
-  if (days < 30) return `${days}d`
-  if (days < 365) return `${Math.round(days / 30)}mo`
-  return `${(days / 365).toFixed(1)}y`
-}
+function BookCard({ book }) {
+  const [adding, setAdding]   = useState(false)
+  const [added, setAdded]     = useState(false)
+  const [error, setError]     = useState('')
 
-function FormatBadge({ format }) {
-  if (!format) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
-  const styles = {
-    EPUB: { bg: 'rgba(74,222,128,0.12)', color: 'var(--success)' },
-    MOBI: { bg: 'rgba(129,140,248,0.12)', color: 'var(--accent)' },
-    AZW:  { bg: 'rgba(129,140,248,0.12)', color: 'var(--accent)' },
-    PDF:  { bg: 'rgba(251,146,60,0.12)',  color: 'var(--warn)' },
+  async function handleAdd() {
+    setAdding(true)
+    setError('')
+    try {
+      await axios.post('/api/request', { title: book.title, author: book.author })
+      setAdded(true)
+    } catch (err) {
+      if (err.response?.status === 409) {
+        setError('Already in queue')
+      } else {
+        setError(err.response?.data?.error || 'Failed to add')
+      }
+    } finally {
+      setAdding(false)
+    }
   }
-  const s = styles[format] || { bg: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)' }
+
   return (
-    <span style={{
-      fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
-      fontFamily: 'var(--font-mono)', padding: '2px 6px',
-      borderRadius: 3, background: s.bg, color: s.color,
-    }}>{format}</span>
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 14,
+      padding: '12px 0', borderBottom: '1px solid var(--border)',
+    }}>
+      {/* Cover */}
+      <div style={{ flexShrink: 0, width: 42, height: 60 }}>
+        {book.cover_id ? (
+          <img
+            src={`https://covers.openlibrary.org/b/id/${book.cover_id}-S.jpg`}
+            alt=""
+            style={{ width: 42, height: 60, objectFit: 'cover', borderRadius: 2, display: 'block' }}
+          />
+        ) : (
+          <div style={{
+            width: 42, height: 60, background: 'var(--bg-raised)',
+            borderRadius: 2, border: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 18,
+          }}>
+            📖
+          </div>
+        )}
+      </div>
+
+      {/* Info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontWeight: 600, fontSize: 13,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {book.title}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+          {[book.author, book.year].filter(Boolean).join(' · ')}
+        </div>
+        {book.series && (
+          <div style={{
+            fontSize: 11, color: 'var(--accent)', marginTop: 3,
+            fontFamily: 'var(--font-mono)',
+          }}>
+            {book.series}
+          </div>
+        )}
+      </div>
+
+      {/* Action */}
+      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+        {error && (
+          <span style={{
+            fontSize: 11,
+            color: error === 'Already in queue' ? 'var(--text-muted)' : 'var(--error)',
+          }}>
+            {error}
+          </span>
+        )}
+        {added ? (
+          <Link
+            to="/queue"
+            style={{
+              fontSize: 12, color: 'var(--success)',
+              textDecoration: 'none', fontFamily: 'var(--font-mono)',
+            }}
+          >
+            ✓ In Queue →
+          </Link>
+        ) : (
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={handleAdd}
+            disabled={adding}
+          >
+            {adding ? <span className="spinner" /> : 'Add to Queue'}
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 
 export default function Search() {
-  const [query, setQuery]       = useState('')
-  const [author, setAuthor]     = useState('')
-  const [results, setResults]   = useState([])
+  const [query, setQuery]         = useState('')
+  const [results, setResults]     = useState([])
   const [searching, setSearching] = useState(false)
-  const [searchController, setSearchController] = useState(null)
-  const [adding, setAdding]     = useState(false)
-  const [forcingIdx, setForcingIdx] = useState(null)
-  const [error, setError]       = useState('')
-  const [added, setAdded]       = useState(null)
+  const [controller, setController] = useState(null)
+  const [error, setError]         = useState('')
+  const [searched, setSearched]   = useState(false)
 
-  function resetForNewQuery() {
+  function handleQueryChange(e) {
+    setQuery(e.target.value)
     setResults([])
-    setAdded(null)
+    setSearched(false)
     setError('')
   }
 
-  function handleCancelSearch() {
-    if (searchController) {
-      searchController.abort()
-      setSearchController(null)
+  function handleCancel() {
+    if (controller) {
+      controller.abort()
+      setController(null)
       setSearching(false)
     }
   }
 
   async function handleSearch(e) {
-    e.preventDefault()
-    if (!query.trim()) return
-    const controller = new AbortController()
-    setSearchController(controller)
+    e?.preventDefault()
+    if (!query.trim() || searching) return
+    const ctrl = new AbortController()
+    setController(ctrl)
     setSearching(true)
     setError('')
-    setAdded(null)
+    setResults([])
+    setSearched(false)
     try {
-      const { data } = await axios.get('/api/search', {
-        params: { q: query, author },
-        signal: controller.signal,
+      const { data } = await axios.get('/api/lookup', {
+        params: { q: query },
+        signal: ctrl.signal,
       })
       setResults(data)
+      setSearched(true)
     } catch (err) {
       if (axios.isCancel(err) || err.name === 'CanceledError') {
-        // user cancelled — no error message
+        // user cancelled
       } else {
         setError(err.response?.data?.error || 'Search failed')
       }
     } finally {
-      setSearchController(null)
+      setController(null)
       setSearching(false)
     }
   }
-
-  async function doAdd(payload) {
-    try {
-      const { data } = await axios.post('/api/request', payload)
-      setAdded(data)
-      return true
-    } catch (err) {
-      if (err.response?.status === 409) {
-        setError('This book is already in your queue.')
-      } else {
-        setError(err.response?.data?.error || 'Failed to add to queue')
-      }
-      return false
-    }
-  }
-
-  async function handleAddToQueue(e) {
-    e.preventDefault()
-    if (!query.trim() || adding) return
-    setAdding(true)
-    setError('')
-    // Pass already-loaded results so the backend skips a redundant search
-    await doAdd({ title: query, author, allResults: results.length > 0 ? results : undefined })
-    setAdding(false)
-  }
-
-  async function handleForce(release, idx) {
-    setForcingIdx(idx)
-    setError('')
-    await doAdd({
-      title: query,
-      author,
-      nzb_title: release.nzb_title,
-      release_group: release.release_group,
-      file_size_mb: release.file_size_mb,
-      score: release.score,
-      nzb_url: release.nzb_url,
-      allResults: results,
-    })
-    setForcingIdx(null)
-  }
-
-  const busy = searching || adding || forcingIdx !== null
 
   return (
     <div>
       <h1 className="page-title">Search</h1>
 
-      <form style={{ display: 'flex', gap: 10, marginBottom: 24, alignItems: 'flex-end' }}>
-        <div className="field" style={{ flex: 2, marginBottom: 0 }}>
-          <label>Title</label>
+      <form
+        onSubmit={handleSearch}
+        style={{ display: 'flex', gap: 10, marginBottom: 24, alignItems: 'flex-end' }}
+      >
+        <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+          <label>Title or Series</label>
           <input
             type="text"
             value={query}
-            onChange={e => { setQuery(e.target.value); resetForNewQuery() }}
-            placeholder="e.g. Project Hail Mary"
-            onKeyDown={e => e.key === 'Enter' && handleSearch(e)}
-          />
-        </div>
-        <div className="field" style={{ flex: 1, marginBottom: 0 }}>
-          <label>Author</label>
-          <input
-            type="text"
-            value={author}
-            onChange={e => setAuthor(e.target.value)}
-            placeholder="e.g. Andy Weir"
-            onKeyDown={e => e.key === 'Enter' && handleSearch(e)}
+            onChange={handleQueryChange}
+            placeholder="e.g. Dungeon Crawler Carl"
+            autoFocus
           />
         </div>
         <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={searching ? handleCancelSearch : handleSearch}
-          disabled={!searching && (busy || !query.trim())}
+          type={searching ? 'button' : 'submit'}
+          className="btn btn-primary"
+          onClick={searching ? handleCancel : undefined}
+          disabled={!searching && !query.trim()}
           style={{ flexShrink: 0 }}
         >
           {searching ? 'Cancel' : 'Search'}
-        </button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={handleAddToQueue}
-          disabled={busy || !query.trim() || !!added}
-          style={{ flexShrink: 0 }}
-        >
-          {adding ? <span className="spinner" /> : added ? '✓ Added' : 'Add to Queue'}
         </button>
       </form>
 
@@ -171,91 +188,29 @@ export default function Search() {
         <div style={{ color: 'var(--error)', marginBottom: 16, fontSize: 13 }}>{error}</div>
       )}
 
-      {added && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20,
-          padding: '10px 14px', borderRadius: 'var(--radius)',
-          background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.25)',
-          fontSize: 13, color: 'var(--success)',
-        }}>
-          <span>✓</span>
-          <span><strong>{added.title}</strong> added to queue</span>
-          <Link to="/queue" style={{ marginLeft: 'auto', fontSize: 12 }}>View Queue →</Link>
+      {searching && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)', fontSize: 13 }}>
+          <span className="spinner" />
+          Searching Open Library…
         </div>
       )}
 
       {results.length > 0 && (
         <div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, fontFamily: 'var(--font-mono)' }}>
-            {results.length} results — sorted by score
+          <div style={{
+            fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)',
+            textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4,
+          }}>
+            {results.length} books found
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Release', 'Format', 'Group', 'Size', 'Age', 'Score', ''].map(h => (
-                  <th key={h} style={{
-                    textAlign: 'left', padding: '6px 10px',
-                    fontSize: 11, fontFamily: 'var(--font-mono)',
-                    textTransform: 'uppercase', letterSpacing: '0.06em',
-                    color: 'var(--text-muted)', fontWeight: 500,
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((r, i) => (
-                <tr
-                  key={i}
-                  style={{
-                    borderBottom: '1px solid var(--border)',
-                    background: i === 0 ? 'rgba(129,140,248,0.05)' : 'transparent',
-                  }}
-                >
-                  <td style={{ padding: '9px 10px', maxWidth: 380 }}>
-                    <div style={{
-                      fontSize: 12, fontFamily: 'var(--font-mono)',
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    }}>
-                      {i === 0 && <span style={{ color: 'var(--accent)', marginRight: 6, fontSize: 10 }}>★ TOP</span>}
-                      {r.nzb_title}
-                    </div>
-                  </td>
-                  <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>
-                    <FormatBadge format={r.format} />
-                  </td>
-                  <td style={{ padding: '9px 10px', fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
-                    {r.release_group || '—'}
-                  </td>
-                  <td style={{ padding: '9px 10px', fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                    {r.file_size_mb > 0 ? `${r.file_size_mb.toFixed(1)} MB` : '—'}
-                  </td>
-                  <td style={{ padding: '9px 10px', fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
-                    {formatAge(r.age_days)}
-                  </td>
-                  <td style={{ padding: '9px 10px' }}>
-                    <ScoreBadge score={r.score} />
-                  </td>
-                  <td style={{ padding: '9px 10px', textAlign: 'right' }}>
-                    {!added && (
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => handleForce(r, i)}
-                        disabled={busy}
-                        title="Force this specific release"
-                      >
-                        {forcingIdx === i ? <span className="spinner" /> : 'Force'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {results.map(book => (
+            <BookCard key={book.key} book={book} />
+          ))}
         </div>
       )}
 
-      {!searching && !adding && results.length === 0 && query && !added && (
-        <div className="empty-state">No results found.</div>
+      {searched && results.length === 0 && !searching && (
+        <div className="empty-state">No books found for "{query}".</div>
       )}
     </div>
   )

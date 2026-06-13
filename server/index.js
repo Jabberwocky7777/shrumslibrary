@@ -95,6 +95,7 @@ app.get('/api/health', (req, res) => res.json({ ok: true }))
 
 // Protected API routes
 app.use('/api/config',          requireAuth, require('./routes/config'))
+app.use('/api/lookup',          requireAuth, require('./routes/lookup'))
 app.use('/api/search',          requireAuth, require('./routes/search'))
 app.use('/api/request',         requireAuth, require('./routes/request'))
 app.use('/api/books',           requireAuth, require('./routes/books'))
