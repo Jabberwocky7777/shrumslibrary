@@ -73,10 +73,18 @@ async function importBook(sourcePath, book) {
 
   fs.mkdirSync(destDir, { recursive: true })
 
-  // Use read+write instead of copyFileSync — copyFileSync uses copy_file_range
-  // which fails with EPERM across different ZFS datasets on TrueNAS.
-  const content = fs.readFileSync(sourcePath)
-  fs.writeFileSync(destPath, content)
+  // Use streams instead of copyFileSync/writeFileSync — both of those call
+  // fchmod after writing, which fails with EPERM on TrueNAS ZFS datasets
+  // that use NFSv4 ACLs. createWriteStream only calls open(O_CREAT) with no
+  // subsequent chmod, so it works across any ZFS dataset configuration.
+  await new Promise((resolve, reject) => {
+    const rs = fs.createReadStream(sourcePath)
+    const ws = fs.createWriteStream(destPath)
+    rs.on('error', reject)
+    ws.on('error', reject)
+    ws.on('finish', resolve)
+    rs.pipe(ws)
+  })
 
   // Verify copy integrity by comparing sizes
   const srcStat = fs.statSync(sourcePath)
