@@ -19,7 +19,10 @@ async function poll() {
   try {
     const slots = await getHistory(100)
     for (const slot of slots) {
-      if (slot.status !== 'Completed') continue
+      // Process both Completed and Failed — SABnzbd marks jobs as Failed when
+      // post-processing trips up on nested archives or extra files, but the
+      // epub is still in the _FAILED_ directory and may be perfectly valid
+      if (slot.status !== 'Completed' && slot.status !== 'Failed') continue
       await processCompletedJob(slot)
     }
   } catch (err) {
