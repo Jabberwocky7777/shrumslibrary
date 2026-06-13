@@ -2,7 +2,7 @@ const router = require('express').Router()
 const db = require('../db')
 const { sendToKindle } = require('../mailer')
 const { sanitiseEpubEncoding } = require('../sanitiser')
-const { deleteJob } = require('../sabnzbd')
+const { deleteJob, deleteHistoryJob } = require('../sabnzbd')
 
 router.get('/', (req, res) => {
   const books = db.prepare(`SELECT * FROM books ORDER BY updated_at DESC`).all()
@@ -59,12 +59,19 @@ router.delete('/:id', async (req, res) => {
   const book = db.prepare('SELECT * FROM books WHERE id = ?').get(req.params.id)
   if (!book) return res.status(404).json({ error: 'Book not found' })
 
-  // Cancel any active SABnzbd job
-  const active = db.prepare(`
+  // Cancel any active queue item (still downloading)
+  const queued = db.prepare(`
     SELECT sabnzbd_job_id FROM releases
     WHERE book_id = ? AND status = 'downloading' AND sabnzbd_job_id IS NOT NULL
   `).get(book.id)
-  if (active) await deleteJob(active.sabnzbd_job_id).catch(() => {})
+  if (queued) await deleteJob(queued.sabnzbd_job_id).catch(() => {})
+
+  // Clean up any already-completed/failed history entry (validating or stalled)
+  const inHistory = db.prepare(`
+    SELECT sabnzbd_job_id FROM releases
+    WHERE book_id = ? AND status = 'validating' AND sabnzbd_job_id IS NOT NULL
+  `).get(book.id)
+  if (inHistory) await deleteHistoryJob(inHistory.sabnzbd_job_id).catch(() => {})
 
   // Delete child records then the book
   const releaseIds = db.prepare('SELECT id FROM releases WHERE book_id = ?').all(book.id).map(r => r.id)

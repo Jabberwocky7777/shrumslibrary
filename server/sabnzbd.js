@@ -48,12 +48,30 @@ async function getHistory(limit = 50) {
   return data.history?.slots || []
 }
 
+// Delete an active queue item (job still downloading)
 async function deleteJob(jobId) {
   const { url, apiKey } = getBase()
   if (!url || !apiKey) return
 
   const params = new URLSearchParams({
     mode: 'queue',
+    name: 'delete',
+    output: 'json',
+    apikey: apiKey,
+    value: jobId,
+    del_files: '1',
+  })
+
+  await fetch(`${url}/api?${params}`)
+}
+
+// Delete a completed/failed history entry and its downloaded files
+async function deleteHistoryJob(jobId) {
+  const { url, apiKey } = getBase()
+  if (!url || !apiKey) return
+
+  const params = new URLSearchParams({
+    mode: 'history',
     name: 'delete',
     output: 'json',
     apikey: apiKey,
@@ -82,4 +100,4 @@ async function testConnection() {
   return data.version
 }
 
-module.exports = { addUrl, getHistory, deleteJob, testConnection }
+module.exports = { addUrl, getHistory, deleteJob, deleteHistoryJob, testConnection }

@@ -1,7 +1,7 @@
 const path = require('path')
 const fs = require('fs')
 const db = require('./db')
-const { getHistory, addUrl, deleteJob } = require('./sabnzbd')
+const { getHistory, addUrl, deleteJob, deleteHistoryJob } = require('./sabnzbd')
 const { validateEpub } = require('./validator')
 const { sanitiseEpubEncoding } = require('./sanitiser')
 const { importBook } = require('./importer')
@@ -88,7 +88,8 @@ async function processCompletedJob(slot) {
       flagReason = validation.errors[0] || 'Invalid epub structure'
     }
 
-    await deleteJob(release.sabnzbd_job_id).catch(() => {})
+    // Job is already in SABnzbd history (not active queue) at this point — use history delete
+    await deleteHistoryJob(release.sabnzbd_job_id).catch(() => {})
     db.prepare(`
       UPDATE releases SET status = ?, flag_reason = ?, validated_at = datetime('now') WHERE id = ?
     `).run(flagStatus, flagReason, release.id)
@@ -117,6 +118,9 @@ async function processCompletedJob(slot) {
     db.prepare(`
       UPDATE books SET current_release_id = ?, updated_at = datetime('now') WHERE id = ?
     `).run(release.id, release.book_id)
+
+    // Clean up the downloaded files from SABnzbd history + disk
+    await deleteHistoryJob(slot.nzo_id).catch(() => {})
 
     // Auto-send to Kindle if a default address exists
     const defaultKindle = db.prepare(`SELECT * FROM kindle_addresses WHERE is_default = 1`).get()
