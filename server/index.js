@@ -71,6 +71,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'https:'],
       connectSrc: ["'self'"],
+      upgradeInsecureRequests: null, // app runs on HTTP, TLS terminated at reverse proxy
     },
   },
   frameguard: { action: 'deny' },
