@@ -58,21 +58,24 @@ function detectFormat(title) {
 
 // ── Prowlarr client ────────────────────────────────────────────────────────────
 
-async function searchProwlarr(query, author) {
+// Parse "Dungeon Crawler Carl #2" → { base: "Dungeon Crawler Carl", num: "2" }
+function parseSeries(seriesString) {
+  if (!seriesString) return null
+  const numMatch = seriesString.match(/(\d+(?:\.\d+)?)\s*$/)
+  const num = numMatch ? numMatch[1] : null
+  const base = seriesString
+    .replace(/\s*[#,]\s*(?:book|vol\.?|volume|part)?\s*[\d.]+\s*$/i, '')
+    .replace(/\s*\(\s*(?:book|vol\.?|volume|part)?\s*[\d.]+\s*\)\s*$/i, '')
+    .trim()
+  return base ? { base, num } : null
+}
+
+async function fetchFromProwlarr(searchQuery) {
   const url = getConfig('prowlarr_url')
   const apiKey = getConfig('prowlarr_api_key')
+  if (!url || !apiKey) throw new Error('Prowlarr URL and API key are required')
 
-  if (!url || !apiKey) {
-    throw new Error('Prowlarr URL and API key are required')
-  }
-
-  const searchQuery = [query, author].filter(Boolean).join(' ')
-  const params = new URLSearchParams({
-    apikey: apiKey,
-    query: searchQuery,
-    type: 'search',
-  })
-  // Prowlarr expects repeated params, not comma-separated
+  const params = new URLSearchParams({ apikey: apiKey, query: searchQuery, type: 'search' })
   params.append('categories', '7000')
   params.append('categories', '7020')
   params.append('categories', '7030')
@@ -82,21 +85,57 @@ async function searchProwlarr(query, author) {
     const body = await response.text().catch(() => '')
     throw new Error(`Prowlarr returned ${response.status}: ${body || response.statusText}`)
   }
+  return response.json()
+}
 
-  const results = await response.json()
+async function searchProwlarr(title, author, series) {
+  // Build a set of queries to try — NZB releases often use the series name
+  // rather than the individual book subtitle, so we try both approaches.
+  const queries = []
 
-  return results
-    .map((r) => ({
-      nzb_title: r.title,
-      release_group: r.releaseGroup || extractGroup(r.title),
-      file_size_mb: r.size ? r.size / (1024 * 1024) : 0,
-      score: scoreRelease(r),
-      nzb_url: r.downloadUrl || r.link,
-      indexer: r.indexer,
-      age_days: typeof r.age === 'number' ? r.age : null,
-      format: detectFormat(r.title),
-    }))
-    .sort((a, b) => b.score - a.score)
+  // 1. Primary: author + title (what the user sees on Open Library)
+  queries.push([author, title].filter(Boolean).join(' '))
+
+  // 2. Series-based: "{author} {series base} {number}" e.g. "Matt Dinniman Dungeon Crawler Carl 2"
+  //    This is usually how indexers title ebook releases in a series.
+  const parsed = parseSeries(series)
+  if (parsed) {
+    queries.push([author, parsed.base, parsed.num].filter(Boolean).join(' '))
+    // 3. Series base alone (catches releases without author in the title)
+    if (parsed.num) queries.push([parsed.base, parsed.num].filter(Boolean).join(' '))
+  }
+
+  // Run all queries, merge + deduplicate by download URL
+  const seen = new Set()
+  const merged = []
+  let lastError
+
+  for (const q of queries) {
+    try {
+      const raw = await fetchFromProwlarr(q)
+      for (const r of raw) {
+        const key = r.downloadUrl || r.link || r.guid
+        if (key && seen.has(key)) continue
+        if (key) seen.add(key)
+        merged.push({
+          nzb_title:     r.title,
+          release_group: r.releaseGroup || extractGroup(r.title),
+          file_size_mb:  r.size ? r.size / (1024 * 1024) : 0,
+          score:         scoreRelease(r),
+          nzb_url:       r.downloadUrl || r.link,
+          indexer:       r.indexer,
+          age_days:      typeof r.age === 'number' ? r.age : null,
+          format:        detectFormat(r.title),
+        })
+      }
+    } catch (err) {
+      lastError = err
+    }
+  }
+
+  if (merged.length === 0 && lastError) throw lastError
+
+  return merged.sort((a, b) => b.score - a.score)
 }
 
 async function testConnection() {

@@ -5,7 +5,7 @@ const { getConfig } = require('../config')
 const db = require('../db')
 
 router.post('/', async (req, res) => {
-  const { title, author, year, isbn, cover_url, nzb_title, release_group, file_size_mb, score, nzb_url, allResults } = req.body || {}
+  const { title, author, year, isbn, cover_url, series, nzb_title, release_group, file_size_mb, score, nzb_url, allResults } = req.body || {}
 
   const bookTitle = (title || nzb_title || '').trim() || 'Unknown'
 
@@ -23,7 +23,7 @@ router.post('/', async (req, res) => {
   let releases = Array.isArray(allResults) && allResults.length > 0 ? allResults : null
   if (!nzb_url && !releases) {
     try {
-      releases = await searchProwlarr(bookTitle, author)
+      releases = await searchProwlarr(bookTitle, author, series)
     } catch (err) {
       return res.status(502).json({ error: `Search failed: ${err.message}` })
     }

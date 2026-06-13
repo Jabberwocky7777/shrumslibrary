@@ -11,7 +11,7 @@ function BookCard({ book }) {
     setAdding(true)
     setError('')
     try {
-      await axios.post('/api/request', { title: book.title, author: book.author })
+      await axios.post('/api/request', { title: book.title, author: book.author, series: book.series })
       setAdded(true)
     } catch (err) {
       if (err.response?.status === 409) {
